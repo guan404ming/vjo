@@ -1,0 +1,10 @@
+name = "VJO"
+version = "0.1.0"
+defaultTargets = ["VJO"]
+
+[[require]]
+name = "mathlib"
+path = "/Users/wchiu/Documents/GitHub/flean/.lake/packages/mathlib"
+
+[[lean_lib]]
+name = "VJO"
