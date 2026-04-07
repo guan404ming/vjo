@@ -10,7 +10,12 @@ __pycache__/
 venv/
 
 # Experiments
-python/experiments/results/
+src/experiments/results/
+
+# Data (keep CSVs, ignore large/generated files)
+data/*.parquet
+data/*.jsonl
+data/models/
 
 # OS
 .DS_Store
