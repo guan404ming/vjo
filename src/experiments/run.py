@@ -57,7 +57,7 @@ def run_search(
     from vllm import LLM
 
     from vjo.config import MODELS
-    from vjo.backend import VLLMOracle, SubstringJudge
+    from vjo.backend import VLLMOracle, NuancedJudge
     from vjo.search import search
 
     cfg = MODELS[model_key]
@@ -67,13 +67,15 @@ def run_search(
     llm = LLM(
         model=cfg.hf_id,
         download_dir="/models",
-        max_model_len=2048,
+        max_model_len=4096,
         gpu_memory_utilization=0.9,
         enable_prefix_caching=True,
     )
 
     oracle = VLLMOracle(llm, cfg)
-    judge = SubstringJudge(min_length=30)
+    # Uses target model as judge (matching BOA's nuanced evaluator prompt).
+    # For best accuracy, use meta-llama/Meta-Llama-3.1-70B-Instruct.
+    judge = NuancedJudge(llm)
 
     vjo_results = []
     boa_results = []
