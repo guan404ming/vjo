@@ -29,10 +29,6 @@ image = (
 
 model_cache = modal.Volume.from_name("vjo-model-cache", create_if_missing=True)
 
-from vjo.config import load_all_prompts
-
-PROMPTS = load_all_prompts()
-
 
 # ---------------------------------------------------------------------------
 # Judge service: Llama-3.1-70B on 2x A100, stays loaded between calls
@@ -191,14 +187,16 @@ def main(
     time_budget: float = 60.0,
     epsilon: float = 1e-4,
 ):
-    from vjo.config import MODELS
+    from vjo.config import MODELS, load_all_prompts
 
-    print(f"VJO | {MODELS[model].name} | {n_prompts} prompts | {time_budget}s")
+    prompts = load_all_prompts()[:n_prompts]
+
+    print(f"VJO | {MODELS[model].name} | {len(prompts)} prompts | {time_budget}s")
     print(f"Judge: Llama-3.1-70B-Instruct (Zhu et al.)\n")
 
     result = run_search.remote(
         model_key=model,
-        prompts=PROMPTS[:n_prompts],
+        prompts=prompts,
         time_budget=time_budget,
         epsilon=epsilon,
     )

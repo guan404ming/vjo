@@ -11,6 +11,7 @@ matching BOA paper (arXiv:2506.17299).
 from __future__ import annotations
 
 from vllm import LLM, SamplingParams
+from vllm.inputs import TokensPrompt
 
 from vjo.config import ModelConfig
 
@@ -95,19 +96,20 @@ class VLLMOracle:
         prompt_ids = self._get_prompt_ids(prompt)
         full_ids = prompt_ids + prefix_ids
 
+        max_logprobs = 20  # vLLM v0.19+ cap
         if top_k == 0:
             params = SamplingParams(
-                max_tokens=1, temperature=1.0, top_k=-1, logprobs=100,
+                max_tokens=1, temperature=1.0, top_k=-1, logprobs=max_logprobs,
             )
         else:
             params = SamplingParams(
-                max_tokens=1, temperature=1.0, top_k=top_k, logprobs=top_k,
+                max_tokens=1, temperature=1.0, top_k=top_k,
+                logprobs=min(top_k, max_logprobs),
             )
 
         outputs = self.llm.generate(
-            prompts=None,
+            [TokensPrompt(prompt_token_ids=full_ids)],
             sampling_params=params,
-            prompt_token_ids=[full_ids],
         )
 
         if not outputs or not outputs[0].outputs:
