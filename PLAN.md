@@ -1,41 +1,48 @@
-**DJ Oracle：Diffusion Model 的可證明最佳安全認證**
+**DJ Oracle: Dual-Judge Safety Certification for Generative Models**
 
 **問題定義**
-- 提出 diffusion safety oracle 問題：給定 diffusion model、text prompt、safety classifier、likelihood 門檻，判定是否存在 initial latent noise 能生成 unsafe 圖片
-- 對標 LLM Jailbreak Oracle（Boa），填補 diffusion model 端的空白
-- Oracle 回傳兩種結果：Sat（找到漏洞，附帶具體 witness）或 Unsat（在指定範圍內證明安全，附帶數學誤差上界）
-- 與現有 adversarial attack 的關鍵差異：攻擊只回答「我找到了一個」，oracle 回答「是否存在」
+- Diffusion safety oracle：給定 diffusion model、text prompt、safety classifier、threshold τ，輸出兩類認證
+- T₁ 認證（統計）：$\Pr_{z \sim N(0,I)}[f(z) > \tau]$ 的上界
+- T₂ 認證（對抗）：$\Pr_{z_0 \sim P}[\text{attack from } z_0 \text{ succeeds}]$ 的下界
+- 不追求全域 Sat/Unsat（在 m ≈ 20 的有效維度下 Lipschitz 搜索需 $10^{40}$ queries，不可行）
+- 參照密碼學哲學：不證「絕對安全」，證「特定 threat model 下的可量化保證」
 
-**技術挑戰**
-- Diffusion model 的 latent space 維度極高（SD v1.5 為 16384 維），暴力搜索不可行
-- 與 LLM oracle 的本質不同：LLM 是離散 token space 的 tree search，diffusion 是連續空間的全域優化
-- 一般情況下等價於高維非凸優化，屬於 intractable 問題
+**T₁：統計認證**
+- Method：Monte Carlo 抽 B 個 $z \sim N(0,I)$，計算 unsafe 比例 $\hat{p}$
+- Bound：Clopper-Pearson 95% 上界 $U_{\text{CP}}(k, B)$
+- 解讀：「在自然使用下，unsafe 率以 95% 信心 ≤ $U_{\text{CP}}$」
+- B=1000 時，$k=0$ 給 $U_{\text{CP}} \approx 0.0037$；$k=100$ 給 $U_{\text{CP}} \approx 0.12$
 
-**核心方法**
-- 利用已有頂會論文（LOCO Edit / NeurIPS 2024、Asyrp / ICLR 2023）驗證的低維語意結構，將搜索從全空間降至 m 維子空間
-- 透過 gradient PCA 找出影響 safety score 的關鍵方向，每個 prompt 獨立計算
-- 在子空間內套用 Piyavskii-Shubert 演算法進行 Lipschitz 全域優化：每評估一個點就縮小未知區域，逐步逼近最佳解
+**T₂：對抗認證**
+- Attack：VAE-backprop PGD，loss = CLIP similarity to `["a nude person", "a naked body", "bare skin"]`
+- 梯度流過 UNet + VAE + CLIP；PGD 更新：$z \leftarrow z - \eta \cdot \text{sign}(\nabla_z \mathcal{L})$
+- 投影回 typical set：$z \leftarrow z / \|z\| \cdot \sqrt{d}$
+- 半徑限制：$\|z - z_0\| \le r$
+- 成功判定：任一步 NudeNet score > τ
+
+**z₀ 與 r 的選擇**
+- z₀ 分層採樣：按 T₁ score 分 4 層 [0.0, 0.05, 0.1, 0.3]，每層 i.i.d. 抽 K 個
+- r grid：{2, 5, 10, 20}
+- 報告 per-stratum Clopper-Pearson 下界 $L_j(r)$
+- 最 punchy 陳述：以 $P = N(0,I) \mid f(z_0) \le 0.1$，給 $\Pr[\text{attack 成功}] \ge L$
 
 **理論貢獻**
-- 證明在 Lipschitz 假設 + 低維子空間假設下，B 次評估後的近似誤差為 O(L·r·B^{−1/m} + δ)
-- 證明此 B^{−1/m} 的收斂速率是 information-theoretically optimal，任何演算法在相同條件下都不可能更快
-- 分析問題的 computational hardness，說明全空間 oracle 的 intractability
-- Unsat 的保證不只是「沒找到」，而是有數學上界的安全認證
+- T₁ bound：標準 CP exact binomial，tight for Bernoulli
+- T₂ bound：attack success rate 的 CP 下界（對偶）
+- Randomized smoothing local cert：對特定 z₀，certified radius $r^*$ 使攻擊失敗機率 ≥ $1 - \alpha$
+- 不追求 Lipschitz global bound（已證明 m = 20 不可行）
 
-**Threat Class 分層**
-- T₁（高似然威脅）：只搜索正常使用中可能被抽到的 noise 區域
-- T₂（Prompt 對齊威脅）：只搜索與 prompt 語意相關的子空間
-- T₃（單一概念威脅）：針對特定 safety category（如裸露）做認證，維度最低，bound 最 tight
+**主要實驗**
+- Hero table：SD v1.5 / ESD / UCE / SalUn 在同一 prompt 下的 $(T_1, T_2)$ 對比
+  - Preliminary：SD v1.5 T₁=0.897, T₂=3/3；ESD T₁=0.110, T₂=3/3
+- T₂ attack success vs r curves：比較各防禦的 certified radius
+- I2P subset（50 prompts）的 $(T_1, T_2)$ batch 評估
+- T₂ ablation：CLIP PGD vs random-direction（證明 attack 實作影響結論）
 
-**實驗設計**
-- 在未防禦模型（SD v1.5、SDXL）上驗證低維假設是否成立
-- 在 concept erasure 模型（ESD、SalUn）上執行 oracle，認證防禦是否真正有效
-- 與 pure gradient ascent、random search 對比，展示 provably optimal 搜索的優勢
-- 量測實際 Lipschitz constant L 與投影誤差 δ，驗證理論 bound 的 tightness
-- 支援使用者自定義 safety classifier（NudeNet、NSFW detector 等），oracle 與 classifier 解耦
+**核心 Finding 模板**
+> 「模型 M 在 prompt p 下：T₁ upper 0.14（自然使用下看似安全），但 T₂ lower 0.83（給定 ESD 自己認為安全的起點，攻擊仍 83% 成功）。Concept erasure 是 statistical cover，不是 adversarial barrier。」
 
 **應用場景**
-- 模型部署前的安全認證：量化特定 prompt 下的 unsafe generation 風險
-- 防禦機制的有效性驗證：concept erasure 做完後用 oracle 檢查是否還有漏網之魚
-- 不同模型版本的安全性比較：用統一框架橫向對比
-- Safety benchmark 的標準化：取代現有 ad hoc 的攻擊成功率指標
+- Concept erasure 方法的 rigorous audit
+- Safety benchmark 標準化：取代 ad hoc ASR，用 $(T_1, T_2)$ 雙指標
+- 防禦方法設計指標：同時最小化兩個 bound
